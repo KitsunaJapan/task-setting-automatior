@@ -20,11 +20,13 @@
   --rad:8px;--rad-lg:12px;
 }
 @media(prefers-color-scheme:dark){:root{
-  --bg:#1c1c1a;--bg2:#262624;--bg3:#2e2e2c;
+  --bg:#1c1c1a;--bg2:#2a2a28;--bg3:#333331;
   --text:#f0f0ee;--text2:#9a9a97;
-  --bd:rgba(255,255,255,0.1);--bd2:rgba(255,255,255,0.2);
-  --danger-bg:#3d1515;--info-bg:#0d2a47;
-  --warn-bg:#3d2f0a;--ok-bg:#0a2e1e;
+  --bd:rgba(255,255,255,0.12);--bd2:rgba(255,255,255,0.25);
+  --danger:#f09595;--danger-bg:#3d1515;--danger-bd:#7a2a2a;
+  --info:#7ab3e8;--info-bg:#0d2a47;
+  --warn-bg:#3d2f0a;--warn-text:#f0c97a;--warn-bd:#7a5e1a;
+  --ok-bg:#0a2e1e;--ok-text:#5ecfa0;
 }}
 body{font-family:'Syne',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;}
 #app{display:flex;flex-direction:column;min-height:100vh;}
@@ -76,6 +78,7 @@ label{font-size:9px;font-weight:600;color:var(--text2);letter-spacing:.5px;text-
 input,select,textarea{font-family:'Syne',sans-serif;font-size:12px;color:var(--text);background:var(--bg2);border:0.5px solid var(--bd);border-radius:var(--rad);padding:7px 9px;outline:none;transition:border-color .15s;width:100%;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 textarea{resize:vertical;min-height:60px;line-height:1.5;}
+select option{background:var(--bg2);color:var(--text);}
 .ms-list{display:flex;flex-direction:column;gap:5px;margin-bottom:6px;}
 .ms-row{display:flex;align-items:center;gap:6px;}
 .ms-row input[type=text]{flex:1;}
@@ -218,7 +221,7 @@ code{font-size:10px;background:var(--bg3);padding:1px 5px;border-radius:3px;font
         サーバーにAnthropicのAPIキーが未設定です。AIタスク自動生成が無効です。
       </div>
       <div id="sheets-warn" class="alert alert-warn" style="display:none;">
-        Google Sheetsが未接続です。「設定」タブでサービスアカウントを設定してください。
+        Google Sheetsが未接続です。「設定」タブでOAuth認証を完了してください。
       </div>
       <div class="card">
         <div class="card-hd">
@@ -304,7 +307,7 @@ code{font-size:10px;background:var(--bg3);padding:1px 5px;border-radius:3px;font
   <div class="view" id="view-sync">
     <div class="content">
       <div id="sync-ng" class="alert alert-warn" style="display:none;">
-        Google Sheetsが未接続です。「設定」タブでサービスアカウントJSONを設定してください。
+        Google Sheetsが未接続です。「設定」タブでOAuth認証を完了してください。
       </div>
       <div class="sync-card">
         <div class="card-hd" style="font-size:12px;font-weight:600;margin-bottom:12px;">同期メニュー</div>
@@ -368,13 +371,23 @@ code{font-size:10px;background:var(--bg3);padding:1px 5px;border-radius:3px;font
         </table>
       </div>
       <div class="setting-card">
-        <div class="setting-card-hd">Google サービスアカウント設定手順</div>
+        <div class="setting-card-hd">Google Sheets 接続設定</div>
         <div class="steps">
-          <div class="step-row"><div class="step-num">1</div><div><a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> でプロジェクト作成 → Sheets API有効化</div></div>
-          <div class="step-row"><div class="step-num">2</div><div>「IAMと管理」→「サービスアカウント」→「作成」</div></div>
-          <div class="step-row"><div class="step-num">3</div><div>「キー」タブ →「鍵を追加」→「JSON」でダウンロード</div></div>
-          <div class="step-row"><div class="step-num">4</div><div>JSONファイルの内容を丸ごと <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> に設定</div></div>
-          <div class="step-row"><div class="step-num">5</div><div>サービスアカウントのメールアドレスをスプレッドシートの「共有」に追加（編集者権限）</div></div>
+          <div class="step-row"><div class="step-num">1</div><div>下の「Googleでログイン」ボタンを押してGoogleアカウントで認証</div></div>
+          <div class="step-row"><div class="step-num">2</div><div>認証するとアクセストークンが自動でセットされます（1時間有効）</div></div>
+          <div class="step-row"><div class="step-num">3</div><div>トークンが切れたら再度「Googleでログイン」を押すだけ</div></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn btn-p btn-sm" onclick="startGoogleAuth()">Googleでログイン</button>
+          <button class="btn btn-sm" onclick="clearGoogleToken()">トークンをクリア</button>
+          <span id="token-status" style="font-size:10px;color:var(--text2);"></span>
+        </div>
+        <div style="margin-top:12px;" id="token-manual-wrap">
+          <label>またはアクセストークンを直接貼り付け</label>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <input type="password" id="manual-token-input" placeholder="ya29.xxxxxxxx" style="flex:1;font-size:11px;">
+            <button class="btn btn-sm" onclick="saveManualToken()">セット</button>
+          </div>
         </div>
       </div>
     </div>
@@ -756,47 +769,7 @@ function saveTask() {
 }
 function closeM(id){ document.getElementById(id).classList.remove('on'); }
 
-// ────────────────────────────────────────
-// SYNC
-// ────────────────────────────────────────
-async function syncKPI() {
-  const r=document.getElementById('res-kpi');
-  try {
-    showSyncResult('res-kpi',true,'転記中...');
-    const res=await fetch('/api/sheets/sync-kpi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goals:S.goals})});
-    if(!res.ok){ const e=await res.json(); throw new Error(e.error); }
-    const {updated}=await res.json();
-    showSyncResult('res-kpi',true,`✓ ${updated}件の目標を転記しました`);
-    toast('シート1（中長期KPI）への転記完了！');
-  } catch(e){ showSyncResult('res-kpi',false,'エラー: '+e.message); toast('KPI転記エラー: '+e.message,'ng'); }
-}
 
-async function syncTasks() {
-  try {
-    showSyncResult('res-tasks',true,'転記中...');
-    const res=await fetch('/api/sheets/sync-tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tasks:S.tasks})});
-    if(!res.ok){ const e=await res.json(); throw new Error(e.error); }
-    const {updated}=await res.json();
-    showSyncResult('res-tasks',true,`✓ ${updated}件のタスクを転記しました`);
-    toast('シート2（日別目標設定）への転記完了！');
-  } catch(e){ showSyncResult('res-tasks',false,'エラー: '+e.message); toast('タスク転記エラー: '+e.message,'ng'); }
-}
-
-async function syncAll() {
-  if(!S.config?.hasSheets){ go('settings'); toast('まず設定タブでSheetsを設定してください'); return; }
-  showSyncResult('res-all',true,'同期中...');
-  try {
-    await syncKPI();
-    await syncTasks();
-    showSyncResult('res-all',true,'✓ 一括同期が完了しました');
-    toast('一括同期完了！');
-  } catch(e){ showSyncResult('res-all',false,'エラー: '+e.message); }
-}
-
-function showSyncResult(id,ok,msg) {
-  const el=document.getElementById(id); if(!el) return;
-  el.textContent=msg; el.className='sync-result '+(ok?'ok':'ng'); el.style.display='block';
-}
 
 // ────────────────────────────────────────
 // SETTINGS
@@ -818,9 +791,189 @@ async function renderSettings() {
 }
 
 // ────────────────────────────────────────
+// GOOGLE OAuth（既存の名刺アプリと同じ方式）
+// トークンはブラウザが持ち、サーバーはプロキシするだけ
+// ────────────────────────────────────────
+let googleToken = localStorage.getItem('strattask_gtoken') || '';
+
+function startGoogleAuth() {
+  const clientId = S.config?.googleClientId;
+  if (!clientId) {
+    toast('GOOGLE_CLIENT_IDがサーバーに未設定です。Renderの環境変数を確認してください。', 'ng');
+    return;
+  }
+  // Google OAuth2 implicit flow（トークンをブラウザで直接取得）
+  const params = new URLSearchParams({
+    client_id:     clientId,
+    redirect_uri:  location.origin,
+    response_type: 'token',
+    scope:         'https://www.googleapis.com/auth/spreadsheets',
+    prompt:        'consent'
+  });
+  window.open('https://accounts.google.com/o/oauth2/v2/auth?' + params, '_blank', 'width=500,height=600');
+  toast('ポップアップでGoogleログインしてください。完了後トークンを貼り付けてください。');
+  document.getElementById('token-manual-wrap').style.display = 'block';
+}
+
+function saveManualToken() {
+  const val = document.getElementById('manual-token-input').value.trim();
+  if (!val) { toast('トークンを入力してください', 'ng'); return; }
+  googleToken = val;
+  localStorage.setItem('strattask_gtoken', val);
+  updateTokenStatus();
+  toast('トークンをセットしました');
+}
+
+function clearGoogleToken() {
+  googleToken = '';
+  localStorage.removeItem('strattask_gtoken');
+  updateTokenStatus();
+  toast('トークンをクリアしました');
+}
+
+function updateTokenStatus() {
+  const el = document.getElementById('token-status');
+  if (!el) return;
+  if (googleToken) {
+    el.textContent = '✓ トークン設定済み';
+    el.style.color = 'var(--ok-text)';
+  } else {
+    el.textContent = '未設定';
+    el.style.color = 'var(--text2)';
+  }
+  // ヘッダーのSheets接続状態も更新
+  const dot = document.getElementById('sh-dot');
+  const lbl = document.getElementById('sh-label');
+  if (dot && lbl) {
+    if (googleToken) { dot.className='dot ok'; lbl.textContent='Sheets接続済'; }
+    else { dot.className='dot'; lbl.textContent='Sheets未接続'; }
+  }
+}
+
+// ── Sheets API（サーバープロキシ経由） ──
+async function apiGet(range) {
+  if (!googleToken) throw new Error('Googleトークンが未設定です。設定タブでログインしてください。');
+  const res = await fetch('/api/sheets/get', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ token: googleToken, range })
+  });
+  if (res.status === 401) { clearGoogleToken(); throw new Error('トークンが無効です。再ログインしてください。'); }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+  return res.json();
+}
+
+async function apiBatch(data) {
+  if (!googleToken) throw new Error('Googleトークンが未設定です。設定タブでログインしてください。');
+  const res = await fetch('/api/sheets/batch-update', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ token: googleToken, data })
+  });
+  if (res.status === 401) { clearGoogleToken(); throw new Error('トークンが無効です。再ログインしてください。'); }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+  return res.json();
+}
+
+async function apiPut(range, values) {
+  if (!googleToken) throw new Error('Googleトークンが未設定です。設定タブでログインしてください。');
+  const res = await fetch('/api/sheets/put', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ token: googleToken, range, values })
+  });
+  if (res.status === 401) { clearGoogleToken(); throw new Error('トークンが無効です。再ログインしてください。'); }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+  return res.json();
+}
+
+function getSheet1Name() { return '中長期KPI'; }
+function getSheetPrefix() { return '日別目標設定'; }
+
+// ── KPI転記 ──
+async function syncKPI() {
+  if (!googleToken) { toast('設定タブでGoogleログインしてください', 'ng'); go('settings'); return; }
+  try {
+    showSyncResult('res-kpi', true, '転記中...');
+    const existing  = await apiGet("'中長期KPI'!A2:A200");
+    const existingNames = (existing.values || []).map(r => r[0]).filter(Boolean);
+    const existingFull  = await apiGet("'中長期KPI'!A2:I200");
+    let writeRow = (existingFull.values || []).length + 2;
+    const updates = [];
+    let written = 0;
+    const pLabelMap = { asap:'ASAP', high:'高', mid:'中', low:'低' };
+
+    for (const g of S.goals) {
+      if (existingNames.includes(g.content)) continue;
+      updates.push({ range: `'中長期KPI'!A${writeRow}`, values: [[g.content]] });
+      updates.push({ range: `'中長期KPI'!B${writeRow}`, values: [[pLabelMap[g.priority]||'']] });
+      updates.push({ range: `'中長期KPI'!C${writeRow}`, values: [[g.period||'']] });
+      updates.push({ range: `'中長期KPI'!D${writeRow}`, values: [[g.owner||'']] });
+      updates.push({ range: `'中長期KPI'!E${writeRow}`, values: [[g.note||'']] });
+      updates.push({ range: `'中長期KPI'!F${writeRow}`, values: [[(g.progress||0)+'%']] });
+      const ms = (g.milestones||[]).slice(0,4);
+      ms.forEach((m,j)=>{
+        updates.push({ range: `'中長期KPI'!G${writeRow+j}`, values: [[m.text||'']] });
+        updates.push({ range: `'中長期KPI'!H${writeRow+j}`, values: [[m.done?'TRUE':'FALSE']] });
+        if(m.date) updates.push({ range: `'中長期KPI'!I${writeRow+j}`, values: [[m.date]] });
+      });
+      writeRow += Math.max(ms.length,1)+1;
+      written++;
+    }
+    if (updates.length) await apiBatch(updates);
+    showSyncResult('res-kpi', true, `✓ ${written}件の目標を転記しました`);
+    toast('シート1（中長期KPI）への転記完了！');
+  } catch(e) { showSyncResult('res-kpi', false, 'エラー: '+e.message); toast(e.message, 'ng'); }
+}
+
+// ── タスク転記 ──
+async function syncTasks() {
+  if (!googleToken) { toast('設定タブでGoogleログインしてください', 'ng'); go('settings'); return; }
+  try {
+    showSyncResult('res-tasks', true, '転記中...');
+    const existing = await apiGet("'日別目標設定'!A2:G200");
+    const rows = existing.values || [];
+    const emptyRows = [];
+    for (let i = 0; i < 200; i++) { if (!rows[i]||!rows[i][0]) emptyRows.push(i+2); }
+    const sorted = [...S.tasks].sort((a,b) => pOrder(a.priority)-pOrder(b.priority));
+    const updates = [];
+    let idx = 0;
+    const pLabelMap = { asap:'ASAP', high:'高', mid:'中', low:'低' };
+    for (const t of sorted) {
+      if (idx >= emptyRows.length) break;
+      const row = emptyRows[idx++];
+      updates.push({ range: `'日別目標設定'!A${row}`, values: [[t.date]] });
+      updates.push({ range: `'日別目標設定'!B${row}`, values: [[t.time]] });
+      updates.push({ range: `'日別目標設定'!C${row}`, values: [[t.name]] });
+      updates.push({ range: `'日別目標設定'!D${row}`, values: [[t.detail||'']] });
+      updates.push({ range: `'日別目標設定'!E${row}`, values: [[pLabelMap[t.priority]||'']] });
+      updates.push({ range: `'日別目標設定'!F${row}`, values: [[t.done?'TRUE':'FALSE']] });
+      if(t.note) updates.push({ range: `'日別目標設定'!G${row}`, values: [[t.note]] });
+    }
+    if (updates.length) await apiBatch(updates);
+    showSyncResult('res-tasks', true, `✓ ${idx}件のタスクを転記しました`);
+    toast('シート2（日別目標設定）への転記完了！');
+  } catch(e) { showSyncResult('res-tasks', false, 'エラー: '+e.message); toast(e.message, 'ng'); }
+}
+
+// ── 一括同期 ──
+async function syncAll() {
+  if (!googleToken) { toast('設定タブでGoogleログインしてください', 'ng'); go('settings'); return; }
+  showSyncResult('res-all', true, '同期中...');
+  try {
+    await syncKPI(); await syncTasks();
+    showSyncResult('res-all', true, '✓ 一括同期が完了しました');
+    toast('一括同期完了！');
+  } catch(e) { showSyncResult('res-all', false, 'エラー: '+e.message); }
+}
+
+function showSyncResult(id, ok, msg) {
+  const el = document.getElementById(id); if(!el) return;
+  el.textContent=msg; el.className='sync-result '+(ok?'ok':'ng'); el.style.display='block';
+}
+
+// ────────────────────────────────────────
 // INIT
 // ────────────────────────────────────────
 init();
+updateTokenStatus();
 </script>
 </body>
 </html>
