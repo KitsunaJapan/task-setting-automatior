@@ -26,11 +26,10 @@ function basicAuth(req, res, next) {
   next();
 }
 
-// ── Sheets API（フロントから受け取ったトークンで叩く） ──
-// 既存の名刺アプリと同じ方式：トークンはブラウザが持ち、サーバーはプロキシするだけ
-async function sheetsRequest(method, path_, token, body) {
+// ── Sheets API ヘルパー（フロントから受け取ったトークンで叩く） ──
+async function sheetsRequest(method, urlPath, token, body) {
   const sid = process.env.SPREADSHEET_ID || '10gH3TlsQOtgPnDW1AhHErpxNsBXv5kgudGJuHms5jyE';
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}${path_}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sid}${urlPath}`;
   const opts = {
     method,
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
@@ -41,7 +40,7 @@ async function sheetsRequest(method, path_, token, body) {
   return res.json();
 }
 
-// ── セキュリティ ──
+// ── セキュリティ設定 ──
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -62,17 +61,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 const aiLimiter     = rateLimit({ windowMs: 60000, max: 10, message: { error: 'リクエスト頻度が高すぎます' } });
 const sheetsLimiter = rateLimit({ windowMs: 60000, max: 60, message: { error: 'リクエスト頻度が高すぎます' } });
 
-// ── 設定情報 ──
+// ── 設定情報（キー非公開） ──
 app.get('/api/config', (req, res) => {
   res.json({
     hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
-    // クライアントIDはOAuth用に公開（secretは非公開）
     googleClientId:  process.env.GOOGLE_CLIENT_ID || null,
     spreadsheetId:   process.env.SPREADSHEET_ID || '10gH3TlsQOtgPnDW1AhHErpxNsBXv5kgudGJuHms5jyE'
   });
 });
 
-// ── AI タスク生成 ──
+// ── AI タスク生成（Anthropic APIプロキシ） ──
 app.post('/api/generate-tasks', aiLimiter, async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY)
     return res.status(503).json({ error: 'ANTHROPIC_API_KEY が未設定です' });
@@ -111,7 +109,11 @@ app.post('/api/generate-tasks', aiLimiter, async (req, res) => {
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
     });
     if (!response.ok) { const e = await response.json(); throw new Error(e.error?.message); }
     const data  = await response.json();
@@ -124,9 +126,7 @@ app.post('/api/generate-tasks', aiLimiter, async (req, res) => {
   }
 });
 
-// ── Sheets プロキシ：フロントからトークンを受け取ってSheetsを叩く ──
-// 既存の名刺アプリと同じパターン
-
+// ── Sheets プロキシ（トークンはフロントが持つ、サーバーは中継するだけ） ──
 app.post('/api/sheets/get', sheetsLimiter, async (req, res) => {
   const { token, range } = req.body;
   if (!token) return res.status(400).json({ error: 'tokenが必要です' });
@@ -151,9 +151,11 @@ app.post('/api/sheets/put', sheetsLimiter, async (req, res) => {
   const { token, range, values } = req.body;
   if (!token) return res.status(400).json({ error: 'tokenが必要です' });
   try {
-    const result = await sheetsRequest('PUT',
+    const result = await sheetsRequest(
+      'PUT',
       `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-      token, { range, majorDimension: 'ROWS', values }
+      token,
+      { range, majorDimension: 'ROWS', values }
     );
     res.json(result);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -164,10 +166,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── 起動 ──
 app.listen(PORT, () => {
   console.log(`StratTask running on port ${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) console.warn('⚠ ANTHROPIC_API_KEY 未設定');
   if (!process.env.GOOGLE_CLIENT_ID)  console.warn('⚠ GOOGLE_CLIENT_ID 未設定');
-  if (!process.env.APP_USER)          console.warn('⚠ Basic認証未設定');
+  if (!process.env.APP_USER)          console.warn('⚠ Basic認証未設定（認証なしで動作）');
   else                                console.log('✓ Basic認証有効');
 });
